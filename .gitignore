@@ -1,0 +1,6 @@
+# misc local
+local
+.DS_Store
+
+# mise
+mise*.local.toml

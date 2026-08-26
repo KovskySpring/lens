@@ -1,0 +1,17 @@
+[tools]
+deno = "2.9.5"
+
+[tasks.fmt]
+run = "deno fmt --check"
+
+[tasks.lint]
+run = "deno lint"
+
+[tasks.test]
+run = "deno test"
+
+[tasks.ci]
+depends = ["fmt", "lint", "test"]
+
+[tasks.bump]
+run = "deno bump-version"

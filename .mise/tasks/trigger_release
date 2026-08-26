@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#MISE description="Create the GitHub release for the current version"
+#MISE depends = "ci"
+set -euo pipefail
+
+version="$(jq -re .version deno.json)"
+gh release create "v${version}" --generate-notes
