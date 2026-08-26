@@ -5,7 +5,7 @@
  *
  * A simplifed implementation of lens from the wondrous world of functional programming.
  *
- * Lenses allow you to focus on a specific part of a data structure,
+ * Lens allow you to focus on a specific part of a data structure,
  * view and update that part without needing to know the entire structure.
  *
  * It is equivalent to "selectors" and "actions" in "reducers" patterns.
