@@ -1,6 +1,8 @@
 /**
  * # Lens for Typescript
  *
+ * [![JSR](https://jsr.io/badges/@tinymirror/lens)](https://jsr.io/@tinymirror/lens)
+ *
  * A simplifed implementation of lens from the wondrous world of functional programming.
  *
  * Lenses allow you to focus on a specific part of a data structure,
