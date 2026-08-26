@@ -79,8 +79,8 @@ let person: Person = { name: "ada", info: { height: 5.5, age: 36 } };
 
 const store = {
   getPerson: () => person,
-  setPerson: (next: Person) => {
-    person = next;
+  setPerson: (next: Person | ((current: Person) => Person)) => {
+    person = typeof next === "function" ? next(person) : next;
   },
 };
 
@@ -118,8 +118,10 @@ let info: PackageInfo = { name: "tinymirror/lens", version: "1.0.0" };
 
 const store = {
   getPackageInfo: () => info,
-  setPackageInfo: (next: PackageInfo) => {
-    info = next;
+  setPackageInfo: (
+    next: PackageInfo | ((current: PackageInfo) => PackageInfo),
+  ) => {
+    info = typeof next === "function" ? next(info) : next;
   },
 };
 

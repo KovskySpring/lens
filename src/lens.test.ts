@@ -1,14 +1,22 @@
 import { assertEquals, assertStrictEquals } from "@std/assert";
 import lens, { type LensLike } from "./lens.ts";
 
-function cell<T>(initial: T): LensLike<T> & { value: T } {
+function cell<T>(
+  initial: T,
+): LensLike<T> & { value: T; reads: number; writes: number } {
   return {
     value: initial,
+    reads: 0,
+    writes: 0,
     get() {
+      this.reads++;
       return this.value;
     },
-    set(next: T) {
-      this.value = next;
+    set(next: T | ((current: T) => T)) {
+      this.writes++;
+      this.value = typeof next === "function"
+        ? (next as (current: T) => T)(this.value)
+        : next;
     },
   };
 }
@@ -120,4 +128,95 @@ Deno.test("set() is a no-op on the source object itself", () => {
   const before = source.get();
   nameLens(source).set("grace");
   assertEquals(before.name, "ada");
+});
+
+Deno.test("set() writes through a reducer rather than reading the source", () => {
+  const source = cell(person());
+  const name = nameLens(source);
+
+  source.reads = 0;
+  name.set("grace");
+  assertEquals(source.reads, 0);
+
+  source.reads = 0;
+  name.set((current) => current + " hopper");
+  assertEquals(source.reads, 0);
+});
+
+type Nested = { a: { b: { c: string } } };
+
+/**
+ * Builds `source -> a -> b -> c` and counts how often each level derives.
+ */
+function chain(source: LensLike<Nested>) {
+  const forwards = { a: 0, b: 0, c: 0 };
+
+  const a = lens<Nested, Nested["a"]>({
+    source,
+    forward: (root) => {
+      forwards.a++;
+      return root.a;
+    },
+    backward: (root, next) => ({ ...root, a: next }),
+  });
+
+  const b = lens<Nested["a"], Nested["a"]["b"]>({
+    source: a,
+    forward: (state) => {
+      forwards.b++;
+      return state.b;
+    },
+    backward: (state, next) => ({ ...state, b: next }),
+  });
+
+  const c = lens<Nested["a"]["b"], string>({
+    source: b,
+    forward: (state) => {
+      forwards.c++;
+      return state.c;
+    },
+    backward: (state, next) => ({ ...state, c: next }),
+  });
+
+  return { c, forwards };
+}
+
+Deno.test("set(value) derives each level below it exactly once", () => {
+  const source = cell<Nested>({ a: { b: { c: "x" } } });
+  const { c, forwards } = chain(source);
+
+  source.reads = 0;
+  source.writes = 0;
+  c.set("y");
+
+  // The target level never derives: backward() already has the new value.
+  assertEquals(forwards, { a: 1, b: 1, c: 0 });
+  assertEquals(source.reads, 0);
+  assertEquals(source.writes, 1);
+  assertEquals(source.value.a.b.c, "y");
+});
+
+Deno.test("set(reducer) derives each level exactly once", () => {
+  const source = cell<Nested>({ a: { b: { c: "x" } } });
+  const { c, forwards } = chain(source);
+
+  source.reads = 0;
+  source.writes = 0;
+  c.set((current) => current + "y");
+
+  // The target level derives once, to hand the reducer its current value.
+  assertEquals(forwards, { a: 1, b: 1, c: 1 });
+  assertEquals(source.reads, 0);
+  assertEquals(source.writes, 1);
+  assertEquals(source.value.a.b.c, "xy");
+});
+
+Deno.test("get() derives each level exactly once", () => {
+  const source = cell<Nested>({ a: { b: { c: "x" } } });
+  const { c, forwards } = chain(source);
+
+  source.reads = 0;
+  assertEquals(c.get(), "x");
+  assertEquals(forwards, { a: 1, b: 1, c: 1 });
+  assertEquals(source.reads, 1);
 });

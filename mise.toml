@@ -5,7 +5,7 @@ deno = "2.9.5"
 run = "deno fmt --check"
 
 [tasks.lint]
-run = "deno lint"
+run = ["deno lint", "deno doc --lint src"]
 
 [tasks.test]
 run = "deno test"
