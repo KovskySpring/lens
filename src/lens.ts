@@ -79,6 +79,16 @@ export interface LensRecipe<S, T> {
 }
 
 /**
+ * A utility type that extracts the setter function type from a {@linkcode Lens}.
+ *
+ * @template T - The type of the {@linkcode Lens} from which to extract the setter function type.
+ * @returns The type of the setter function for the lens, or `never` if `T` is not a valid lens type.
+ */
+export type Setter<T extends Lens<unknown, unknown>> = T extends
+  Lens<unknown, infer V> ? (current: V) => V
+  : never;
+
+/**
  * Creates a {@linkcode Lens} from a {@linkcode LensRecipe}.
  *
  * @template S - The type of the source data structure.
