@@ -12,12 +12,14 @@ It is equivalent to "selectors" and "actions" in "reducers" patterns.
 
 About [@tinymirror](https://jsr.io/@tinymirror)
 
-> [@tinymirror](https://jsr.io/@tinymirror) is a collection of small, minimal packages
-> that mirrors the feature set of bigger packages, but with a smaller footprint
-> and a simpler API. [@tinymirror](https://jsr.io/@tinymirror) is meant for when your
-> project need the functionality, but can't shoulder the weight of bundling another package.
-> See [Best practice](https://jsr.io/@tinymirror/lens#best-practice) for more information
-> on how to best approach [@tinymirror/lens](https://jsr.io/@tinymirror/lens).
+> [@tinymirror](https://jsr.io/@tinymirror) is a collection of small, minimal
+> packages that mirrors the feature set of bigger packages, but with a smaller
+> footprint and a simpler API. [@tinymirror](https://jsr.io/@tinymirror) is
+> meant for when your project need the functionality, but can't shoulder the
+> weight of bundling another package. See
+> [Best practice](https://jsr.io/@tinymirror/lens#best-practice) for more
+> information on how to best approach
+> [@tinymirror/lens](https://jsr.io/@tinymirror/lens).
 
 ## Installation
 
@@ -62,9 +64,9 @@ pnpm dlx jsr add @tinymirror/lens
 
 ## Usage
 
-A `Lens` is created with `lens`. It takes a `LensRecipe` to define
-how to read the focused value out of the source (`LensRecipe.forward`)
-and how to write an updated value back into it (`LensRecipe.backward`).
+A `Lens` is created with `lens`. It takes a `LensRecipe` to define how to read
+the focused value out of the source (`LensRecipe.forward`) and how to write an
+updated value back into it (`LensRecipe.backward`).
 
 - `Lens.get` takes the source and returns the focused value.
 - `Lens.set` takes the new value (or a reducer that derives it from the current
