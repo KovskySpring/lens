@@ -1,222 +1,192 @@
-import { assertEquals, assertStrictEquals } from "@std/assert";
-import lens, { type LensLike } from "./lens.ts";
+import { assertEquals } from "@std/assert";
+import * as L from "./lens.ts";
 
-function cell<T>(
-  initial: T,
-): LensLike<T> & { value: T; reads: number; writes: number } {
+function tracked<S, T>(
+  lens: L.Lens<S, T>,
+): L.Lens<S, T> & { tracked: { reads: number; writes: number } } {
+  let reads = 0;
+  let writes = 0;
+
+  const originalGet = lens.get;
+  const originalSet = lens.set;
+
+  lens.get = (source: S) => {
+    reads++;
+    return originalGet(source);
+  };
+
+  lens.set = (valueOrReducer: T | ((current: T) => T)) => {
+    writes++;
+    return originalSet(valueOrReducer as Parameters<typeof originalSet>[0]);
+  };
+
   return {
-    value: initial,
-    reads: 0,
-    writes: 0,
-    get() {
-      this.reads++;
-      return this.value;
-    },
-    set(next: T | ((current: T) => T)) {
-      this.writes++;
-      this.value = typeof next === "function"
-        ? (next as (current: T) => T)(this.value)
-        : next;
+    ...lens,
+    tracked: {
+      get reads() {
+        return reads;
+      },
+      get writes() {
+        return writes;
+      },
     },
   };
 }
 
-type Person = { name: string; age: number; address: { city: string } };
+type Person = {
+  name: string;
+  age: number;
+  address: { city: { name: string; code: string } };
+};
 
-const person = (): Person => ({
+const DEFAULT_PERSON: Person = {
   name: "ada",
   age: 36,
-  address: { city: "london" },
+  address: { city: { name: "london", code: "LDN" } },
+};
+
+const person: Person = {
+  name: "ada",
+  age: 36,
+  address: { city: { name: "london", code: "LDN" } },
+};
+
+const NameLens = L.lens<Person, string>({
+  forward: (p) => p.name,
+  backward: (p, name) => ({ ...p, name }),
 });
 
-function nameLens(source: LensLike<Person>) {
-  return lens<Person, string>({
-    source,
-    forward: (p) => p.name,
-    backward: (p, name) => ({ ...p, name }),
-  });
-}
-
-Deno.test("get() runs forward over the source value", () => {
-  const source = cell(person());
-  assertEquals(nameLens(source).get(), "ada");
+const AgeLens = L.lens<Person, number>({
+  forward: (p) => p.age,
+  backward: (p, age) => ({ ...p, age }),
 });
 
-Deno.test("get() re-reads the source every call", () => {
-  const source = cell(person());
-  const name = nameLens(source);
-  assertEquals(name.get(), "ada");
-  source.set({ ...source.get(), name: "grace" });
-  assertEquals(name.get(), "grace");
+const CityLens = L.lens<Person, string>({
+  forward: (p) => p.address.city.name,
+  backward: (p, city) => ({
+    ...p,
+    address: {
+      ...p.address,
+      city: {
+        ...p.address.city,
+        name: city,
+      },
+    },
+  }),
 });
 
-Deno.test("set(value) writes back through backward", () => {
-  const source = cell(person());
-  nameLens(source).set("grace");
-  assertEquals(source.get().name, "grace");
+Deno.test("get() accessing a field of depth 1", () => {
+  assertEquals(NameLens.get(person), DEFAULT_PERSON.name);
+  assertEquals(AgeLens.get(person), DEFAULT_PERSON.age);
 });
 
-Deno.test("set(value) leaves the rest of the source untouched", () => {
-  const source = cell(person());
-  nameLens(source).set("grace");
-  assertEquals(source.get().age, 36);
-  assertEquals(source.get().address.city, "london");
+Deno.test("get() accessing a field of depth 2", () => {
+  assertEquals(CityLens.get(person), DEFAULT_PERSON.address.city.name);
 });
 
-Deno.test("set(reducer) receives the current derived value", () => {
-  const source = cell(person());
-  const seen: string[] = [];
-  nameLens(source).set((current) => {
-    seen.push(current);
-    return current.toUpperCase();
-  });
-  assertEquals(seen, ["ada"]);
-  assertEquals(source.get().name, "ADA");
-});
-
-Deno.test("set(reducer) sees writes made by an earlier set", () => {
-  const source = cell(person());
-  const name = nameLens(source);
-  name.set("grace");
-  name.set((current) => current + " hopper");
-  assertEquals(source.get().name, "grace hopper");
-});
-
-Deno.test("the recipe is exposed on the lens", () => {
-  const source = cell(person());
-  const name = nameLens(source);
-  assertStrictEquals(name.recipe.source, source);
-  assertEquals(name.recipe.forward(person()), "ada");
-});
-
-Deno.test("a lens can itself be used as a source", () => {
-  const source = cell(person());
-  const address = lens<Person, { city: string }>({
-    source,
-    forward: (p) => p.address,
-    backward: (p, address) => ({ ...p, address }),
-  });
-  const city = lens<{ city: string }, string>({
-    source: address,
-    forward: (a) => a.city,
-    backward: (a, city) => ({ ...a, city }),
+Deno.test("set(value) updates the correct field", () => {
+  assertEquals(NameLens.set("grace")(person), {
+    ...DEFAULT_PERSON,
+    name: "grace",
   });
 
-  assertEquals(city.get(), "london");
-  city.set("cambridge");
-  assertEquals(source.get().address.city, "cambridge");
-  assertEquals(source.get().name, "ada");
-});
-
-Deno.test("set() always treats a function argument as a reducer", () => {
-  type Handlers = { onClick: () => string };
-  const source = cell<Handlers>({ onClick: () => "old" });
-  const onClick = lens<Handlers, () => string>({
-    source,
-    forward: (h) => h.onClick,
-    backward: (h, onClick) => ({ ...h, onClick }),
+  assertEquals(AgeLens.set(42)(person), {
+    ...DEFAULT_PERSON,
+    age: 42,
   });
 
-  const replacement = () => "new";
-  (onClick.set as (v: unknown) => void)(replacement);
-
-  assertEquals(source.get().onClick as unknown, "new");
+  assertEquals(CityLens.set("paris")(person), {
+    ...DEFAULT_PERSON,
+    address: {
+      ...DEFAULT_PERSON.address,
+      city: {
+        ...DEFAULT_PERSON.address.city,
+        name: "paris",
+      },
+    },
+  });
 });
 
-Deno.test("set() is a no-op on the source object itself", () => {
-  const source = cell(person());
-  const before = source.get();
-  nameLens(source).set("grace");
-  assertEquals(before.name, "ada");
-});
+Deno.test("set(reducer) updates the correct field", () => {
+  assertEquals(NameLens.set((current) => current + " hopper")(person), {
+    ...DEFAULT_PERSON,
+    name: "ada hopper",
+  });
 
-Deno.test("set() writes through a reducer rather than reading the source", () => {
-  const source = cell(person());
-  const name = nameLens(source);
+  assertEquals(AgeLens.set((current) => current + 10)(person), {
+    ...DEFAULT_PERSON,
+    age: 46,
+  });
 
-  source.reads = 0;
-  name.set("grace");
-  assertEquals(source.reads, 0);
-
-  source.reads = 0;
-  name.set((current) => current + " hopper");
-  assertEquals(source.reads, 0);
+  assertEquals(CityLens.set((current) => current.toUpperCase())(person), {
+    ...DEFAULT_PERSON,
+    address: {
+      ...DEFAULT_PERSON.address,
+      city: {
+        ...DEFAULT_PERSON.address.city,
+        name: "LONDON",
+      },
+    },
+  });
 });
 
 type Nested = { a: { b: { c: string } } };
 
-/**
- * Builds `source -> a -> b -> c` and counts how often each level derives.
- */
-function chain(source: LensLike<Nested>) {
-  const forwards = { a: 0, b: 0, c: 0 };
+const NestedData: Nested = { a: { b: { c: "x" } } };
 
-  const a = lens<Nested, Nested["a"]>({
-    source,
-    forward: (root) => {
-      forwards.a++;
-      return root.a;
-    },
-    backward: (root, next) => ({ ...root, a: next }),
-  });
-
-  const b = lens<Nested["a"], Nested["a"]["b"]>({
-    source: a,
-    forward: (state) => {
-      forwards.b++;
-      return state.b;
-    },
-    backward: (state, next) => ({ ...state, b: next }),
-  });
-
-  const c = lens<Nested["a"]["b"], string>({
-    source: b,
-    forward: (state) => {
-      forwards.c++;
-      return state.c;
-    },
-    backward: (state, next) => ({ ...state, c: next }),
-  });
-
-  return { c, forwards };
-}
-
-Deno.test("set(value) derives each level below it exactly once", () => {
-  const source = cell<Nested>({ a: { b: { c: "x" } } });
-  const { c, forwards } = chain(source);
-
-  source.reads = 0;
-  source.writes = 0;
-  c.set("y");
-
-  // The target level never derives: backward() already has the new value.
-  assertEquals(forwards, { a: 1, b: 1, c: 0 });
-  assertEquals(source.reads, 0);
-  assertEquals(source.writes, 1);
-  assertEquals(source.value.a.b.c, "y");
+const NestedToALens = L.lens<Nested, Nested["a"]>({
+  forward: (n) => n.a,
+  backward: (n, a) => ({ ...n, a }),
 });
 
-Deno.test("set(reducer) derives each level exactly once", () => {
-  const source = cell<Nested>({ a: { b: { c: "x" } } });
-  const { c, forwards } = chain(source);
-
-  source.reads = 0;
-  source.writes = 0;
-  c.set((current) => current + "y");
-
-  // The target level derives once, to hand the reducer its current value.
-  assertEquals(forwards, { a: 1, b: 1, c: 1 });
-  assertEquals(source.reads, 0);
-  assertEquals(source.writes, 1);
-  assertEquals(source.value.a.b.c, "xy");
+const AToBLens = L.lens<Nested["a"], Nested["a"]["b"]>({
+  forward: (a) => a.b,
+  backward: (a, b) => ({ ...a, b }),
 });
 
-Deno.test("get() derives each level exactly once", () => {
-  const source = cell<Nested>({ a: { b: { c: "x" } } });
-  const { c, forwards } = chain(source);
+const BToCLens = L.lens<Nested["a"]["b"], Nested["a"]["b"]["c"]>({
+  forward: (b) => b.c,
+  backward: (b, c) => ({ ...b, c }),
+});
 
-  source.reads = 0;
-  assertEquals(c.get(), "x");
-  assertEquals(forwards, { a: 1, b: 1, c: 1 });
-  assertEquals(source.reads, 1);
+Deno.test("set(value) on composed lens doesn't read from lower level lens", () => {
+  const a = tracked(NestedToALens);
+  const b = tracked(AToBLens);
+  const c = tracked(BToCLens);
+  const composed = tracked(L.compose(L.compose(a, b), c));
+  const outcome = composed.set("y")(NestedData);
+  assertEquals(outcome, { a: { b: { c: "y" } } });
+  assertEquals(a.tracked.reads, 0, "a should not be read");
+  assertEquals(b.tracked.reads, 0, "b should not be read");
+  assertEquals(c.tracked.reads, 0, "c should not be read");
+  assertEquals(composed.tracked.reads, 0, "composed should not be read");
+  assertEquals(a.tracked.writes, 1, "a should be written to once");
+  assertEquals(b.tracked.writes, 1, "b should be written to once");
+  assertEquals(c.tracked.writes, 1, "c should be written to once");
+  assertEquals(
+    composed.tracked.writes,
+    1,
+    "composed should be written to once",
+  );
+});
+
+Deno.test("get(source) on composed lens only read from lower level lens once", () => {
+  const a = tracked(NestedToALens);
+  const b = tracked(AToBLens);
+  const c = tracked(BToCLens);
+  const composed = tracked(L.compose(L.compose(a, b), c));
+  const outcome = composed.get(NestedData);
+  assertEquals(outcome, NestedData.a.b.c);
+  assertEquals(a.tracked.reads, 1, "a should be read once");
+  assertEquals(b.tracked.reads, 1, "b should be read once");
+  assertEquals(c.tracked.reads, 1, "c should be read once");
+  assertEquals(composed.tracked.reads, 1, "composed should be read once");
+  assertEquals(a.tracked.writes, 0, "a should be written to once");
+  assertEquals(b.tracked.writes, 0, "b should be written to once");
+  assertEquals(c.tracked.writes, 0, "c should be written to once");
+  assertEquals(
+    composed.tracked.writes,
+    0,
+    "composed should be written to once",
+  );
 });
